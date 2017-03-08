@@ -15,3 +15,4 @@ def triLaterate(point1: (float, float), point2: (float, float), point3: (float,f
     x = (C * D - F * A) / (B * D - E * A)
     y = (A * E - D * B) / (C * E - F * B)
     return (x, y)
+

@@ -2,6 +2,7 @@ import sys
 import time
 from maths.triangl import findVertex
 from maths.triangl import triLaterate
+from lib.simple import approx
 
 try:
     from pymorse import Morse
@@ -20,15 +21,6 @@ radUp = 1.57
 radDown = -1.57
 radRight = 0
 radLeft = 3.14
-
-def approx(inputVal: float, testVal: float, approx: float = 0.0025) -> bool:
-    lowerBound = testVal - approx
-    upperBound = testVal + approx
-    if inputVal > lowerBound and inputVal < upperBound:
-        return True
-    else:
-        return False
-
 
 with Morse() as simu:
 
