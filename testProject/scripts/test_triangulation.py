@@ -1,8 +1,10 @@
 import sys
 import time
-from maths.triangl import findVertex
+
+from libs.SimpleController import SimpleController
+from maths.triangl import findVertex, triArgh
 from maths.triangl import triLaterate
-from lib.simple import approx
+from maths.triangl import triBoh
 
 try:
     from pymorse import Morse
@@ -21,6 +23,15 @@ radUp = 1.57
 radDown = -1.57
 radRight = 0
 radLeft = 3.14
+
+def approx(inputVal: float, testVal: float, approx: float = 0.0025) -> bool:
+    lowerBound = testVal - approx
+    upperBound = testVal + approx
+    if inputVal > lowerBound and inputVal < upperBound:
+        return True
+    else:
+        return False
+
 
 with Morse() as simu:
 
@@ -81,12 +92,19 @@ with Morse() as simu:
 
     targetCoordinates = findVertex(cPoint, cDist, xDist, yDist, side)
     targetNewCoordinates = triLaterate(cPoint, xPoint, yPoint, cDist, xDist, yDist)
+    targetAgainNew = triBoh(cPoint, xPoint, yPoint, cDist, xDist, yDist)
+    targetArgh = triArgh(xPoint, yPoint, cDist, xDist, yDist)
 
     print("xPoint: ", xPoint[0], xPoint[1])
     print("yPoint: ", yPoint[0], yPoint[1])
     print("cPoint: ", cPoint[0], cPoint[1])
     print("oldTrilaterator: ", targetCoordinates)
     print("newTrilaterator: ", targetNewCoordinates)
+    print("letsHope: ", targetAgainNew)
+    print("...: ", targetArgh)
+
+    controller = SimpleController()
+
 
 
 
