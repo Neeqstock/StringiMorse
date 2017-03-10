@@ -12,10 +12,13 @@ Phi = 3.14
 Pi = 3.1415
 
 minBFr = 1.3
-maxBFr = 1.9
+maxBFr = 1.8        # tested: 1.9
 midBFr = 1.65
 correctProp = 1.4
-rotBound = 1.5
+rotBound = 1
+centerSecure = 1.6  # tested: 1.8 # security distance from which the robot starts turning if there's an obstacle in front of him
+arrivalApprox = 1 # defines the radius in which the robot considers to be arrived to the target
+angleApprox = 0.1   # approximation for isInRect
 
 class SimpleController:
     __pos = None
@@ -32,6 +35,16 @@ class SimpleController:
     __motionSpeed = 1
 
     __triangDistance = 1.4
+
+    __insertionAngle = None     # Condizione per verificare se mi trovo sulla retta
+    __hitPoint = None
+    __iAmInHitPoint = False
+    __hitPointDistance = None
+    __hitPointRadius = 1.5      # ball radius of the hitpoint
+
+    __strettoia = 0             # ocio alle strettoie!
+    __strettoiaLimit = 0.3
+    __troppoStretto = 0.6
 
     def __init__(self, pos, motion, prox, ir1, ir2, ir3, ir4):
         self.__pos = pos
@@ -56,16 +69,31 @@ class SimpleController:
         y = Point2.y - Point1.y
         return (x ** 2 + y ** 2) ** 0.5
 
+    def getRelativeAngles(self, coordinates: Coordinates) -> float(2):
+        xCat = coordinates.x - self.__pos.get()['x']
+        selfPosition = Coordinates(self.__pos.get()['x'], self.__pos.get()['y'])
+        Hyp = self.getDistance(selfPosition, coordinates)
+        try:
+            angle = math.acos(xCat / Hyp)
+        except:
+            angle = 4
+        if (coordinates.y - selfPosition.y) < 0:
+            angle = -angle
+        if angle > 0:
+            return (angle - Pi, angle)
+        else:
+            return (angle, angle + Pi)
+
     def evalBFrange(self, ir):  # Returns 0 if under, 1 if in, 2 if over
-        if self.getIrMedium(ir) < maxBFr and self.getIrMedium(ir) > minBFr:
+        if self.getIrMedium(ir) < maxBFr - self.__strettoia and self.getIrMedium(ir) > minBFr - self.__strettoia:
             return 1
-        elif self.getIrMedium(ir) < minBFr:
+        elif self.getIrMedium(ir) < minBFr - self.__strettoia:
             return 0
-        elif self.getIrMedium(ir) > maxBFr:
+        elif self.getIrMedium(ir) > maxBFr - self.__strettoia:
             return 2
 
     def getBFerr(self, ir):
-        return midBFr - self.getIrMinimum(ir)
+        return midBFr - self.__strettoia - self.getIrMinimum(ir)
 
     # SENSOR PRINT
     def print_pos(self):
@@ -114,11 +142,21 @@ class SimpleController:
     def getBmin(self):
         self.getMinimum(self.getCIr())
 
+    def getCL(self):
+        return self.__ir1.get()['range_list'][0]
+
+    def getCR(self):
+        return self.__ir1.get()['range_list'][20]
+
     def getProximity(self, prox):
         return prox.get()['near_objects']['target']
 
     def getPosition(self):
         position = Position(self.__pos.get()['x'], self.__pos.get()['y'], self.__pos.get()['yaw'])
+        return position
+
+    def getPositionCoordinates(self) -> Coordinates:
+        position = Coordinates(self.__pos.get()['x'], self.__pos.get()['y'])
         return position
 
     # SENSORS ELABORATION
@@ -133,6 +171,20 @@ class SimpleController:
                 min = value
         return float(min)
 
+    def isInRect(self) -> bool:
+        angles = self.getRelativeAngles(self.__target)
+        if (self.approx(self.__insertionAngle, angles[0], angleApprox)) or (self.approx(self.__insertionAngle, angles[1], angleApprox)):
+            return True
+        return False
+
+
+    def amIArrived(self) -> bool:
+        position = self.getPositionCoordinates()
+        if (self.getDistance(position, self.__target) < arrivalApprox):
+            return True
+        else:
+            return False
+
     # BASIC MOTION
     def stopWhenReached(self, coordinates: Position, approximation: float = 0.5):
         while(not self.approx(self.__pos.get()['x'], coordinates.getX(), approximation)) and (not self.approx(self.__pos.get()['y'], coordinates.getY(), approximation)):
@@ -142,8 +194,8 @@ class SimpleController:
     def move(self, v, w=0.0):
         self.__motion.publish({"v": v, "w": w})
 
-    def moveFWD(self):
-        self.__motion.publish({"v": self.__motionSpeed, "w": 0})
+    def moveFWD(self, speed = __motionSpeed):
+        self.__motion.publish({"v": speed, "w": 0})
 
     def moveBWD(self):
         self.__motion.publish({"v": -self.__motionSpeed, "w": 0})
@@ -152,11 +204,23 @@ class SimpleController:
         self.__motion.publish({"v": 0, "w": 0})
 
     # BASIC ROTATION
-    def rotateCW(self):
-        self.__motion.publish({"v": 0, "w": -self.__rotationSpeed})
+    def rotateCW(self, w = __rotationSpeed):
+        self.__motion.publish({"v": 0, "w": -w})
 
-    def rotateCCW(self):
-        self.__motion.publish({"v": 0, "w": self.__rotationSpeed})
+    def rotateCCW(self, w = __rotationSpeed):
+        self.__motion.publish({"v": 0, "w": w})
+
+
+    def rotateInTheMoreConvenient(self, finalYaw, w = __rotationSpeed):
+        actualYaw = self.__pos.get()['yaw']
+        diff = actualYaw - finalYaw
+        if diff < -Pi or (diff > 0 and diff < Pi):
+            self.rotateCW(w)
+        else:
+            self.rotateCCW(w)
+        while not self.approx(self.__pos.get()['yaw'], finalYaw):
+            pass
+        self.stop()
 
     def rotate90Right(self):
         self.stop()
@@ -185,7 +249,7 @@ class SimpleController:
         resultYaw = yaw - Phi
         if resultYaw < - Phi:
             resultYaw = resultYaw + 2*Phi
-            self.move(0, -self.__rotationSpeed)
+            self.move(0, -1)
         while not self.approx(self.__pos.get()['yaw'], resultYaw):
             pass
         self.stop()
@@ -199,20 +263,6 @@ class SimpleController:
             angle = -angle
         self.rotateInTheMoreConvenient(angle)
 
-    def rotateInTheMoreConvenient(self, finalYaw):
-        actualYaw = self.__pos.get()['yaw']
-        diff = actualYaw - finalYaw
-
-        if diff < -Pi or (diff > 0 and diff < Pi):
-
-            self.rotateCW()
-        else:
-
-            self.rotateCCW()
-        while not self.approx(self.__pos.get()['yaw'], finalYaw):
-            pass
-        self.stop()
-
     def rotateTowardsTarget(self):
         if self.__target is None:
             print("No target has been calculated yet! You first need to triangulate it.")
@@ -221,11 +271,13 @@ class SimpleController:
 
     # TARGET LOCATION
     def triangulateTarget(self) -> Coordinates:
+        self.checkTrilaterationSpace()
         cPose = self.__pos.get()
         cDist = self.__prox.get()['near_objects']['target']
+        print("cx = %s cy %s" % (cPose['x'], cPose['y']))
 
         # Turn the robot up
-        self.rotateInTheMoreConvenient(Pi/2)
+        self.rotateInTheMoreConvenient(Pi/2, 0.2)
 
         # Reach PY
         self.moveFWD()
@@ -234,6 +286,7 @@ class SimpleController:
 
         yPose = self.__pos.get()
         yDist = self.__prox.get()['near_objects']['target']
+        print("cx = %s cy %s" % (yPose['x'], yPose['y']))
 
         # Get back to PC
         self.moveBWD()
@@ -241,8 +294,9 @@ class SimpleController:
         self.stop()
 
         # Reach PX
-        self.rotateInTheMoreConvenient(0)
+        self.rotateInTheMoreConvenient(0, 0.2)
         self.moveFWD()
+
         time.sleep(self.__triangDistance)
         self.stop()
 
@@ -256,15 +310,44 @@ class SimpleController:
         side = abs(xPoint[0] - cPoint[0])
 
         targetCoordinates = findVertex(cPoint, cDist, xDist, yDist, side)
-
-        print("xPoint: ", xPoint[0], xPoint[1])
-        print("yPoint: ", yPoint[0], yPoint[1])
-        print("cPoint: ", cPoint[0], cPoint[1])
-        print("oldTrilaterator: ", targetCoordinates)
-
         self.__target = Coordinates(targetCoordinates[0], targetCoordinates[1])
 
+        self.moveBWD()
+        time.sleep(self.__triangDistance)
+        self.stop()
         return self.__target
+
+    def goal(self):
+        print(time.time(), "Goal!!! I am arrived.")
+        self.stop()
+        while True:
+            pass
+
+    # Nuove di Tom
+    def evalIrRange(self, ir, range: float):  # Returns 0 if no obj, 1 if obj
+        if self.getIrMedium(ir) < range:
+            return 1
+        else:
+            return 0
+
+    def checkTrilaterationSpace(self):
+        self.rotateInTheMoreConvenient(Pi / 2, w=0.4)
+        self.checkFrontalSpace()
+        self.rotateInTheMoreConvenient(0, w=0.4)
+        self.checkFrontalSpace()
+
+    def checkFrontalSpace(self):
+        if self.evalIrRange(self.getCIr(), 2) == 1:
+            print("no space front")
+            enoughSpace = self.getIrMedium(self.getBIr()) - self.getIrMedium(self.getCIr())
+            if enoughSpace > 0:
+                self.moveBWD()
+                time.sleep(enoughSpace)
+                self.stop()
+                return 0
+            else:
+                print("can't trilaterate")
+                return 1
 
     def getTarget(self) -> Coordinates:
         if self.__target is None:
@@ -274,15 +357,18 @@ class SimpleController:
             return self.__target
 
     # COMPLEX MOTION: BOUNDARY FOLLOWING
-
     def alg_moveIntoBF(self): # Move until reached an obstacle and then go into BF mode
-        self.moveUntilObstacleInRange()
-        if self.evalBFrange(self.getLIr()) == 1:
-            self.unlimLeftBoundaryFollow()
-        elif self.evalBFrange(self.getRIr()) == 1:
-            self.leftBoundaryFollow()
+        while True:
+            # self.moveUntilObstacleInRange()
+            if (self.__ir1.get()['range_list'][20] < maxBFr) or (self.getIrMedium(self.__ir2) < 2):
+                print("left BF!")
+                self.leftBoundaryFollow()
+            elif (self.__ir1.get()['range_list'][0] < maxBFr) or (self.getIrMedium(self.__ir3) < 2):
+                print("right BF!")
+                self.rightBoundaryFollow()
+            self.moveFWD()
 
-    def leftBoundaryFollow(self):
+    def old_LeftBoundaryFollow(self):
         while True:
             if self.evalBFrange(self.getLIr()) == 1:
                 err = self.getBFerr(self.getLIr())
@@ -294,12 +380,14 @@ class SimpleController:
                 while self.getIrMedium(self.getLIr()) > midBFr:
                     self.rotateCCW()
 
-    def unlimLeftBoundaryFollow(self):
+    def leftBoundaryFollow(self):
         while True: # exit condition here! TODO
-            if self.evalBFrange(self.getCIr()) == 1 or self.evalBFrange(self.getCIr()) == 0:
-                while self.evalBFrange(self.getCIr()) == 1 or self.evalBFrange(self.getCIr()) == 0:
-                    self.move(0.2, -0.6)
+            if self.getIrMedium(self.getCIr()) < centerSecure:
+                print("if")
+                while self.getIrMedium(self.getCIr()) < centerSecure:
+                    self.move(0.1, -0.6)
             else:
+                print("else")
                 if self.evalBFrange(self.getLIr()) == 0:
                     while self.getIrMedium(self.getLIr()) < midBFr:
                         self.rotateCW()
@@ -307,16 +395,171 @@ class SimpleController:
                     err = self.getBFerr(self.getLIr())
                     if err > 1: err = rotBound
                     if err < -1: err = -rotBound
-                    self.move(0.7, -err * correctProp)
+                    self.move(1-abs(err)*1.6, -err * correctProp)
                 elif self.evalBFrange(self.getLIr()) == 2:
                     err = self.getBFerr(self.getLIr())
                     if err > 1: err = 1
                     if err < -1: err = 1
                     self.move(0.5, -err*0.8)
 
-    def moveUntilObstacleInRange(self):
+    def rightBoundaryFollow(self):
+        while True: # exit condition here! TODO
+            if self.getIrMedium(self.getCIr()) < centerSecure:
+                print("if")
+                while self.getIrMedium(self.getCIr()) < centerSecure:
+                    self.move(0.1, 0.6)
+            else:
+                print("else")
+                if self.evalBFrange(self.getRIr()) == 0:
+                    while self.getIrMedium(self.getRIr()) < midBFr:
+                        self.rotateCCW()
+                elif self.evalBFrange(self.getRIr()) == 1:
+                    err = self.getBFerr(self.getRIr())
+                    if err > 1: err = rotBound
+                    if err < -1: err = -rotBound
+                    self.move(1-abs(err)*1.6, err * correctProp)
+                elif self.evalBFrange(self.getRIr()) == 2:
+                    err = self.getBFerr(self.getRIr())
+                    if err > 1: err = 1
+                    if err < -1: err = 1
+                    self.move(0.5, err*0.8)
+
+    def moveUntilObstacleInRange(self):                 # DEPRECATA!
         while self.evalBFrange(self.getLIr()) != 1 and self.evalBFrange(self.getRIr()) != 1:
             self.moveFWD()
+
+    def alg_bug2(self): # Move until reached an obstacle and then go into BF mode
+        print(time.time(), ": triangulating target.")
+        self.triangulateTarget()                        # 1: TRIANGOLA!
+        print(time.time(), ": target triangulated. Target pos = ", self.__target)
+
+        self.rotateTowardsTarget()                      # GIRATI VERSO L'OBBIETTIVO
+        print(time.time(), ": i'm now directed towards target.")
+
+        self.__insertionAngle = self.__pos.get()['yaw'] # REGISTRA L'INSERTION ANGLE
+        print(time.time(), ": the insertion angle is ", self.__insertionAngle)
+
+        while True:
+            if self.amIArrived():                 # 2: VERIFICO SE SONO ARRIVATO...
+                self.goal()
+                                                        # VERIFICO SE ENTRARE IN BF
+            if self.__ir1.get()['range_list'][10] < maxBFr:             # center hit!
+                if self.__ir1.get()['range_list'][20] < self.__ir1.get()['range_list'][0]:
+                    print(time.time(), ": obstacle, center hit! Entering LEFT boundary following.")
+                    self.leftBoundaryFollowWithCondition()
+                else:
+                    print(time.time(), ": obstacle, center hit! Entering RIGHT boundary following.")
+                    self.rightBoundaryFollowWithCondition()
+            elif(self.__ir1.get()['range_list'][20] < maxBFr) or (self.getIrMedium(self.__ir2) < 2): # left hit!
+                print(time.time(), ": obstacle, left hit! Entering LEFT boundary following.")
+                self.leftBoundaryFollowWithCondition()
+
+            elif (self.__ir1.get()['range_list'][0] < maxBFr) or (self.getIrMedium(self.__ir3) < 2): # right hit
+                print(time.time(), ": obstacle, right hit! Entering RIGHT boundary following.")
+                self.rightBoundaryFollowWithCondition()
+            else:
+                self.moveFWD(0.6)                              # ALTRIMENTI CONTINUO AD ANDARE...
+
+        print(time.time(), ": algorithm stopped. I hope I just reached the target! :)")
+
+    def leftBoundaryFollowWithCondition(self):
+        # REGISTRO L'HITPOINT
+        self.__hitPoint = self.getPositionCoordinates()
+        self.__iAmInHitPoint = True
+        self.__hitPointDistance = self.__prox.get()['near_objects']['target']
+        print(time.time(), ": new hitpoint registered = ", self.__hitPoint, " distance = ", self.__hitPointDistance)
+
+        while True:
+            if self.amIArrived():
+                self.goal()
+            # CONDIZIONE DI USCITA
+            if (self.__iAmInHitPoint == False) and (self.isInRect()):  # CHE CONDIZIONE DI USCITA!
+                if (self.__prox.get()['near_objects']['target'] < self.__hitPointDistance):
+                    break
+                print(time.time(), " i was on the rect, but i was more far than the hitpoint.")
+
+            # VERIFICONE PER DICHIARARE DI ESSERMI ALLONTANATO DALL'HITPOINT
+            if (self.__iAmInHitPoint == True):
+                if (self.getDistance(self.getPositionCoordinates(), self.__hitPoint)) > self.__hitPointRadius:
+                    self.__iAmInHitPoint = False
+                    print("Just got out of the hitpoint...")
+
+
+            if self.getIrMedium(self.getRIr()) < 2:   # strettoia mode
+                if (self.getIrMedium(self.getLIr()) < self.__troppoStretto) and (self.getIrMedium(self.getRIr()) < self.__troppoStretto):
+                    print("azz, tropp strett! merd")
+                    self.rotate180()
+                err = self.getBFerr(self.getLIr()) - (2 - self.getIrMedium(self.getRIr()))
+                if err > rotBound: err = rotBound
+                if err < -rotBound: err = -rotBound
+                self.move(1 - abs(err), -err * correctProp)
+            elif self.getIrMedium(self.getCIr()) < centerSecure:  # centrosbatt mode
+                self.move(0.1, -0.6)
+            elif self.evalBFrange(self.getLIr()) == 0:
+                while self.getIrMedium(self.getLIr()) < midBFr:
+                    self.rotateCW(0.5)
+            elif self.evalBFrange(self.getLIr()) == 1:
+                err = self.getBFerr(self.getLIr())
+                if err > rotBound: err = rotBound
+                if err < -rotBound: err = -rotBound
+                self.move(1 - abs(err) * 1.2, -err * correctProp)
+            elif self.evalBFrange(self.getLIr()) == 2:
+                err = self.getBFerr(self.getLIr())
+                if err > 1: err = 1
+                if err < -1: err = 1
+                self.move(0.5, -err * 0.8)
+
+        self.rotateTowardsTarget()  # EXIT FROM BF: ROTATE TOWARDS TARGET
+
+    def rightBoundaryFollowWithCondition(self):
+        # REGISTRO L'HITPOINT
+        self.__hitPoint = self.getPositionCoordinates()
+        self.__iAmInHitPoint = True
+        self.__hitPointDistance = self.__prox.get()['near_objects']['target']
+        print(time.time(), ": new hitpoint registered = ", self.__hitPoint, " distance = ", self.__hitPointDistance)
+
+        while True:
+            if self.amIArrived():
+                self.goal()
+            # CONDIZIONE DI USCITA
+            if (self.__iAmInHitPoint == False) and (self.isInRect()):  # CHE CONDIZIONE DI USCITA!
+                if (self.__prox.get()['near_objects']['target'] < self.__hitPointDistance):
+                    break
+                print(time.time(), " i was on the rect, but i was more far than the hitpoint.")
+
+            # VERIFICONE PER DICHIARARE DI ESSERMI ALLONTANATO DALL'HITPOINT
+            if (self.__iAmInHitPoint == True):
+                if (self.getDistance(self.getPositionCoordinates(), self.__hitPoint)) > self.__hitPointRadius:
+                    self.__iAmInHitPoint = False
+                    print("Just got out of the hitpoint...")
+
+
+
+            if self.getIrMedium(self.getLIr()) < 2:   # strettoia mode
+                if (self.getIrMedium(self.getLIr()) < self.__troppoStretto) and (self.getIrMedium(self.getRIr()) < self.__troppoStretto):
+                    print("azz, tropp strett! merd")
+                    self.rotate180()
+                err = self.getBFerr(self.getRIr()) - (2 - self.getIrMedium(self.getLIr()))
+                if err > rotBound: err = rotBound
+                if err < -rotBound: err = -rotBound
+                self.move(1 - abs(err), err * correctProp)
+            elif self.getIrMedium(self.getCIr()) < centerSecure: # centrosbatt mode
+                    self.move(0.1, 0.6)
+            elif self.evalBFrange(self.getRIr()) == 0:
+                while self.getIrMedium(self.getRIr()) < midBFr:
+                    self.rotateCCW(0.5)
+            elif self.evalBFrange(self.getRIr()) == 1:
+                err = self.getBFerr(self.getRIr())
+                if err > rotBound: err = rotBound
+                if err < -rotBound: err = -rotBound
+                self.move(1 - abs(err) * 1.2, err * correctProp)
+            elif self.evalBFrange(self.getRIr()) == 2:
+                err = self.getBFerr(self.getRIr())
+                if err > 1: err = 1
+                if err < -1: err = 1
+                self.move(0.5, err * 0.8)
+
+        self.rotateTowardsTarget()  # EXIT FROM BF: ROTATE TOWARDS TARGET
 
 
 
