@@ -1,5 +1,7 @@
 import sys
 
+from libs.SimpleController import SimpleController
+
 try:
     from pymorse import Morse
 except ImportError:
@@ -18,3 +20,7 @@ with Morse() as simu:
     ir4 = simu.robot.ir4                    # ir sensor #4
     prox = simu.robot.prox                  # proximity sensor
     motion = simu.robot.motion              # motion speed actuator
+
+    controller = SimpleController(pose, motion, prox, ir1, ir2, ir3, ir4)
+
+    controller.stop()

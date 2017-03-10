@@ -26,9 +26,18 @@ with Morse() as simu:
     controller = SimpleController(pose, motion, prox, ir1, ir2, ir3, ir4)
 
     # VARIOUS TESTS
-    controller.rotateInTheMoreConvenient(-1)
-    time.sleep(1)
-    controller.triangulateTarget()
-    print("Target position: ", controller.getTarget().x, controller.getTarget().y)
-    time.sleep(1)
-    controller.rotateTowardsTarget()
+    #controller.rotateInTheMoreConvenient(-1)
+    #time.sleep(1)
+    # controller.triangulateTarget()
+    # controller.moveBWD()
+    # time.sleep(1)
+    # controller.stop()
+    # print("Target position: ", controller.getTarget().x, controller.getTarget().y)
+    # time.sleep(1)
+    # controller.rotateTowardsTarget()
+
+    # while True:
+    #     time.sleep(1)
+    #     controller.printAllIrsMinimum()
+
+    controller.alg_moveIntoBF()
