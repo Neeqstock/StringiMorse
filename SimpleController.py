@@ -6,6 +6,7 @@ import math
 
 from libs.Coordinates import Coordinates
 from maths.triangl import findVertex
+from maths.triangl import findVertex2
 
 halfPhi = 1.57
 Phi = 3.14
@@ -15,12 +16,12 @@ Pi = 3.1415
 # secure distance from wall when turning on itself (right, medium) = 1.2414
 # secure distance from wall when turning on itself (center, medium) = 0.7755
 
-strettoiaMode = 1.4
+strettoiaMode = 1.5
 
 minBFr = 1.5
 maxBFr = 1.8        # tested: 1.9
 midBFr = 1.65
-correctProp = 1.4
+correctProp = 0.9
 rotBound = 1
 centerSecure = 1.8  # tested: 1.8 # security distance from which the robot starts turning if there's an obstacle in front of him
 arrivalApprox = 1 # defines the radius in which the robot considers to be arrived to the target
@@ -108,7 +109,7 @@ class SimpleController:
         # only displaying useful information
 
     def print_position(self):
-        print("X = %s, Y = %s and yaw =%s" % (self.__pos.x, self.__pos.y, self.__pos.yaw))
+        print("X = %s, Y = %s and yaw =%s" % (self.__pos.get()['x'], self.__pos.get()['y'], self.__pos.get()['yaw']))
 
         # only displaying useful information
 
@@ -183,7 +184,6 @@ class SimpleController:
             return True
         return False
 
-
     def amIArrived(self) -> bool:
         position = self.getPositionCoordinates()
         if (self.getDistance(position, self.__target) < arrivalApprox):
@@ -216,15 +216,14 @@ class SimpleController:
     def rotateCCW(self, w = __rotationSpeed):
         self.__motion.publish({"v": 0, "w": w})
 
-
-    def rotateInTheMoreConvenient(self, finalYaw, w = __rotationSpeed):
+    def rotateInTheMoreConvenient(self, finalYaw, w=__rotationSpeed, approx=0.03):
         actualYaw = self.__pos.get()['yaw']
         diff = actualYaw - finalYaw
         if diff < -Pi or (diff > 0 and diff < Pi):
             self.rotateCW(w)
         else:
             self.rotateCCW(w)
-        while not self.approx(self.__pos.get()['yaw'], finalYaw):
+        while not self.approx(self.__pos.get()['yaw'], finalYaw, approx):
             pass
         self.stop()
 
@@ -280,10 +279,10 @@ class SimpleController:
         self.checkTrilaterationSpace()
         cPose = self.__pos.get()
         cDist = self.__prox.get()['near_objects']['target']
-        print("cx = %s cy %s" % (cPose['x'], cPose['y']))
+        print("cx = %s cy = %s" % (cPose['x'], cPose['y']))
 
         # Turn the robot up
-        self.rotateInTheMoreConvenient(Pi/2, 0.2)
+        self.rotateInTheMoreConvenient(Pi/2, 0.1, 0.005)
 
         # Reach PY
         self.moveFWD()
@@ -292,7 +291,7 @@ class SimpleController:
 
         yPose = self.__pos.get()
         yDist = self.__prox.get()['near_objects']['target']
-        print("cx = %s cy %s" % (yPose['x'], yPose['y']))
+        print("Yx = %s Yy = %s" % (yPose['x'], yPose['y']))
 
         # Get back to PC
         self.moveBWD()
@@ -300,7 +299,7 @@ class SimpleController:
         self.stop()
 
         # Reach PX
-        self.rotateInTheMoreConvenient(0, 0.2)
+        self.rotateInTheMoreConvenient(0, 0.1, 0.005)
         self.moveFWD()
 
         time.sleep(self.__triangDistance)
@@ -308,6 +307,7 @@ class SimpleController:
 
         xPose = self.__pos.get()
         xDist = self.__prox.get()['near_objects']['target']
+        print("Xx = %s Xy = %s" % (xPose['x'], xPose['y']))
 
         # Damn calculations
         xPoint = (xPose['x'], xPose['y'])
@@ -317,6 +317,56 @@ class SimpleController:
 
         targetCoordinates = findVertex(cPoint, cDist, xDist, yDist, side)
         self.__target = Coordinates(targetCoordinates[0], targetCoordinates[1])
+        print("Tx = %s Ty = %s" % (targetCoordinates[0], targetCoordinates[1]))
+
+        self.moveBWD()
+        time.sleep(self.__triangDistance)
+        self.stop()
+        return self.__target
+
+    def triangulateTarget2(self) -> Coordinates:
+        self.checkTrilaterationSpace()
+        cPose = self.__pos.get()
+        cDist = self.__prox.get()['near_objects']['target']
+        print("cx = %s cy = %s" % (cPose['x'], cPose['y']))
+
+        # Turn the robot up
+        self.rotateInTheMoreConvenient(Pi / 2, 0.1, 0.005)
+
+        # Reach PY
+        self.moveFWD()
+        time.sleep(self.__triangDistance)
+        self.stop()
+
+        yPose = self.__pos.get()
+        yDist = self.__prox.get()['near_objects']['target']
+        print("Yx = %s Yy = %s" % (yPose['x'], yPose['y']))
+
+        # Get back to PC
+        self.moveBWD()
+        time.sleep(self.__triangDistance)
+        self.stop()
+
+        # Reach PX
+        self.rotateInTheMoreConvenient(0, 0.1, 0.005)
+        self.moveFWD()
+
+        time.sleep(self.__triangDistance)
+        self.stop()
+
+        xPose = self.__pos.get()
+        xDist = self.__prox.get()['near_objects']['target']
+        print("Xx = %s Xy = %s" % (xPose['x'], xPose['y']))
+
+        # Damn calculations
+        xPoint = (xPose['x'], xPose['y'])
+        yPoint = (yPose['x'], yPose['y'])
+        cPoint = (cPose['x'], cPose['y'])
+        side = abs(xPoint[0] - cPoint[0])
+
+        targetCoordinates = findVertex2(cPoint, yPoint,xPoint, cDist, xDist, yDist, side)
+        self.__target = Coordinates(targetCoordinates[0], targetCoordinates[1])
+        print("Tx = %s Ty = %s" % (targetCoordinates[0], targetCoordinates[1]))
 
         self.moveBWD()
         time.sleep(self.__triangDistance)
@@ -436,7 +486,7 @@ class SimpleController:
 
     def alg_bug2(self): # Move until reached an obstacle and then go into BF mode
         print(time.time(), ": triangulating target.")
-        self.triangulateTarget()                        # 1: TRIANGOLA!
+        self.triangulateTarget2()                        # 1: TRIANGOLA!
         print(time.time(), ": target triangulated. Target pos = ", self.__target.x, self.__target.y)
 
         self.rotateTowardsTarget()                      # GIRATI VERSO L'OBBIETTIVO
@@ -485,25 +535,27 @@ class SimpleController:
                 print(time.time(), " i was on the rect, but i was more far than the hitpoint.")
 
             # VERIFICONE PER DICHIARARE DI ESSERMI ALLONTANATO DALL'HITPOINT
-            if (self.__iAmInHitPoint == True):
+            if self.__iAmInHitPoint == True:
                 if (self.getDistance(self.getPositionCoordinates(), self.__hitPoint)) > self.__hitPointRadius:
                     self.__iAmInHitPoint = False
                     print("Just got out of the hitpoint...")
 
-
-            if self.getIrMedium(self.getRIr()) < strettoiaMode:   # strettoia mode
+            if self.getIrMedium(self.getCIr()) < centerSecure:  # centrosbatt mode
+                print("centrosbatt mode")
+                self.move(0, -0.4)
+            elif self.getIrMedium(self.getRIr()) < strettoiaMode:   # strettoia mode
                 if (self.getIrMedium(self.getLIr()) < self.__troppoStretto) and (self.getIrMedium(self.getRIr()) < self.__troppoStretto):
                     print("azz, tropp strett! merd")
                     self.rotate180()
                 err = self.getBFerr(self.getLIr()) - (2 - self.getIrMedium(self.getRIr()))
+                print("strettoia")
                 if err > rotBound: err = rotBound
                 if err < -rotBound: err = -rotBound
-                self.move(1 - abs(err), -err * correctProp)
-            elif self.getIrMedium(self.getCIr()) < centerSecure:  # centrosbatt mode
-                self.move(0.1, -0.6)
+                self.move(1 - abs(err)*0.5, -err * correctProp)
             elif self.evalBFrange(self.getLIr()) == 0:
+                print("trop vicin")
                 while self.getIrMedium(self.getLIr()) < midBFr:
-                    self.rotateCW(0.5)
+                    self.rotateCW(0.4)
             elif self.evalBFrange(self.getLIr()) == 1:
                 err = self.getBFerr(self.getLIr())
                 if err > rotBound: err = rotBound
@@ -511,9 +563,10 @@ class SimpleController:
                 self.move(1 - abs(err) * 1.2, -err * correctProp)
             elif self.evalBFrange(self.getLIr()) == 2:
                 err = self.getBFerr(self.getLIr())
+                print("trop lontan")
                 if err > 1: err = 1
                 if err < -1: err = 1
-                self.move(0.5, -err * 0.8)
+                self.move(0.5, -err * 0.9)
 
         self.rotateTowardsTarget()  # EXIT FROM BF: ROTATE TOWARDS TARGET
 
@@ -539,20 +592,18 @@ class SimpleController:
                     self.__iAmInHitPoint = False
                     print("Just got out of the hitpoint...")
 
-
-
-            if self.getIrMedium(self.getLIr()) < strettoiaMode:   # strettoia mode
+            if self.getIrMedium(self.getCIr()) < centerSecure: # centrosbatt mode
+                print("centrosbatt mode")
+                self.move(0, 0.4)
+            elif self.getIrMedium(self.getLIr()) < strettoiaMode:   # strettoia mode
                 if (self.getIrMedium(self.getLIr()) < self.__troppoStretto) and (self.getIrMedium(self.getRIr()) < self.__troppoStretto):
                     print("azz, tropp strett! merd")
                     self.rotate180()
                 err = self.getBFerr(self.getRIr()) - (2 - self.getIrMedium(self.getLIr()))
-                print("sono scemo")
+                print("strettoia")
                 if err > rotBound: err = rotBound
                 if err < -rotBound: err = -rotBound
-                self.move(1 - abs(err), err * correctProp)
-            elif self.getIrMedium(self.getCIr()) < centerSecure: # centrosbatt mode
-                print("centrosbatt mode")
-                self.move(0, 0.4)
+                self.move(1 - abs(err)*0.5, err * correctProp)
             elif self.evalBFrange(self.getRIr()) == 0:
                 print("trop vicin")
                 while self.getIrMedium(self.getRIr()) < midBFr:
