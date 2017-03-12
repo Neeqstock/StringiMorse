@@ -24,7 +24,7 @@ midBFr = 1.65
 correctProp = 0.9
 rotBound = 1
 centerSecure = 1.8  # tested: 1.8 # security distance from which the robot starts turning if there's an obstacle in front of him
-arrivalApprox = 1 # defines the radius in which the robot considers to be arrived to the target
+arrivalApprox = 0.8 # defines the radius in which the robot considers to be arrived to the target
 angleApprox = 0.1   # approximation for isInRect
 
 class SimpleController:
@@ -349,6 +349,11 @@ class SimpleController:
 
         # Reach PX
         self.rotateInTheMoreConvenient(0, 0.1, 0.005)
+
+        cPose = self.__pos.get()
+        cDist = self.__prox.get()['near_objects']['target']
+        print("cx = %s cy = %s" % (cPose['x'], cPose['y']))
+
         self.moveFWD()
 
         time.sleep(self.__triangDistance)
