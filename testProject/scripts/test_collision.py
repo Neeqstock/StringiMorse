@@ -1,7 +1,5 @@
 import sys
 
-import time
-
 from libs.SimpleController import SimpleController
 
 try:
@@ -9,8 +7,6 @@ try:
 except ImportError:
     print("you need first to install pymorse, the Python bindings for MORSE!")
     sys.exit(1)
-
-piGreco = 3.14159
 
 with Morse() as simu:
 
@@ -23,21 +19,22 @@ with Morse() as simu:
     prox = simu.robot.prox                  # proximity sensor
     motion = simu.robot.motion              # motion speed actuator
 
+    # Get sensor measurements and control the actuator
+    pose.get()                              # get from pose sensor
+    ir1.get()                               # get from ir sensor #1
+    ir2.get()                               # get from ir sensor #2
+    ir3.get()                               # get from ir sensor #3
+    ir4.get()                               # get from ir sensor #4
+    prox.get()                              # get from proximity sensor
+    motion.publish({"v": 0, "w": 0})        # set robot linear and angular speed
+
     controller = SimpleController(pose, motion, prox, ir1, ir2, ir3, ir4)
 
-    # VARIOUS TESTS
-    #controller.rotateInTheMoreConvenient(-1)
-    #time.sleep(1)
-    # controller.triangulateTarget()
-    # controller.moveBWD()
-    # time.sleep(1)
-    # controller.stop()
-    # print("Target position: ", controller.getTarget().x, controller.getTarget().y)
-    # time.sleep(1)
-    # controller.rotateTowardsTarget()
+    #controller.rotateInTheMoreConvenient(0)
 
-    # while True:
-    #     time.sleep(1)
-    #     controller.printAllIrsMinimum()
+    while True:
+        #x = controller.getIrMedium(controller.getCIr())
+        #print(x)
+        controller.print_position()
 
-    controller.alg_bug2()
+    #controller.alg_moveIntoBF()
